@@ -9,7 +9,7 @@
 #include "setup_ib.h"
 
 struct IBRes ib_res;
-struct MRinfo * server_MRinfo = NULL;
+struct MRinfo *server_MRinfo = NULL;
 
 int connect_qp_server()
 {
@@ -23,6 +23,7 @@ int connect_qp_server()
     struct QPInfo *local_qp_info = NULL;
     struct QPInfo *remote_qp_info = NULL;
 
+    ibv_fork_init();
     sockfd = sock_create_bind(config_info.sock_port);
     check(sockfd > 0, "Failed to create server socket.");
     listen(sockfd, 5);
@@ -32,14 +33,12 @@ int connect_qp_server()
 
     for (i = 0; i < num_peers; i++)
     {
-        peer_sockfd[i] = accept(sockfd, (struct sockaddr *)&peer_addr,
-                                &peer_addr_len);
+        peer_sockfd[i] = accept(sockfd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         check(peer_sockfd[i] > 0, "Failed to create peer_sockfd[%d]", i);
     }
 
     /* init local qp_info */
-    local_qp_info = (struct QPInfo *)calloc(num_peers,
-                                            sizeof(struct QPInfo));
+    local_qp_info = (struct QPInfo *)calloc(num_peers, sizeof(struct QPInfo));
     check(local_qp_info != NULL, "Failed to allocate local_qp_info");
 
     for (i = 0; i < num_peers; i++)
@@ -47,11 +46,11 @@ int connect_qp_server()
         local_qp_info[i].lid = ib_res.port_attr.lid;
         local_qp_info[i].qp_num = ib_res.qp[i]->qp_num;
         local_qp_info[i].rank = config_info.rank;
+        log("local qp lid is %d, qp_num is %d. rank is %d", local_qp_info[i].lid, local_qp_info[i].qp_num, local_qp_info[i].rank);
     }
 
     /* get qp_info from client */
-    remote_qp_info = (struct QPInfo *)calloc(num_peers,
-                                             sizeof(struct QPInfo));
+    remote_qp_info = (struct QPInfo *)calloc(num_peers, sizeof(struct QPInfo));
     check(remote_qp_info != NULL, "Failed to allocate remote_qp_info");
 
     for (i = 0; i < num_peers; i++)
@@ -190,6 +189,7 @@ int connect_qp_client()
         local_qp_info[i].lid = ib_res.port_attr.lid;
         local_qp_info[i].qp_num = ib_res.qp[i]->qp_num;
         local_qp_info[i].rank = config_info.rank;
+        log("local qp lid is %u, qp_num is %d. rank is %d", local_qp_info[i].lid, local_qp_info[i].qp_num, local_qp_info[i].rank);
     }
 
     /* send qp_info to server */
@@ -211,16 +211,15 @@ int connect_qp_client()
     }
 
     /* get remote mr info from server */
-    server_MRinfo = (struct MRinfo*) calloc(num_peers, sizeof(struct MRinfo));
+    server_MRinfo = (struct MRinfo *)calloc(num_peers, sizeof(struct MRinfo));
     check(server_MRinfo != NULL, "Failed to allocate remote_mr_info");
     for (i = 0; i < num_peers; i++)
     {
         ret = sock_get_MR_info(peer_sockfd[i], &server_MRinfo[i]);
         check(ret == 0, "Failed to get qp_info[%d] from server", i);
     }
-    log("Remote server mr info addr:%p, length:%ld, rkey: %d", \
+    log("Remote server mr info addr:%p, length:%ld, rkey: %d",
         server_MRinfo->addr, server_MRinfo->length, server_MRinfo->rkey);
-
 
     /* change QP state to RTS */
     /* send qp_info to client */
@@ -328,6 +327,8 @@ int setup_ib()
     /* query IB port attribute */
     ret = ibv_query_port(ib_res.ctx, IB_PORT, &ib_res.port_attr);
     check(ret == 0, "Failed to query IB port information.");
+    ib_res.port_attr.lid = 0x93;
+    ib_res.port_attr.sm_lid = 1;
 
     /* register mr */
     /* set the buf_size twice as large as msg_size * num_concurr_msgs */
@@ -336,25 +337,20 @@ int setup_ib()
     /* assume all msgs are of the same content */
     ib_res.ib_buf_size = config_info.msg_size * config_info.num_concurr_msgs * ib_res.num_qps;
     ib_res.ib_buf = (char *)memalign(4096, ib_res.ib_buf_size);
-    // log("ib_res.ib_buf_siz %ld", ib_res.ib_buf_size);
+    log("ib_res.ib_buf_siz %ld", ib_res.ib_buf_size);
     // ib_res.ib_buf = malloc(ib_res.ib_buf_size);
-    memset(ib_res.ib_buf, 0, ib_res.ib_buf_size);
     check(ib_res.ib_buf != NULL, "Failed to allocate ib_buf");
 
-    ib_res.mr = ibv_reg_mr(ib_res.pd, (void *)ib_res.ib_buf,
-                           ib_res.ib_buf_size,
-                           IBV_ACCESS_LOCAL_WRITE |
-                               IBV_ACCESS_REMOTE_READ |
-                               IBV_ACCESS_REMOTE_WRITE);
+    ib_res.mr = ibv_reg_mr(ib_res.pd, (void *)ib_res.ib_buf, ib_res.ib_buf_size, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
     check(ib_res.mr != NULL, "Failed to register mr");
+    memset(ib_res.ib_buf, 0, ib_res.ib_buf_size);
     log("addr %p, length:%ld", ib_res.mr->addr, ib_res.mr->length);
 
-    server_MRinfo = (struct MRinfo*) calloc(config_info.num_clients, sizeof(struct MRinfo));
+    server_MRinfo = (struct MRinfo *)calloc(config_info.num_clients, sizeof(struct MRinfo));
     server_MRinfo->addr = ib_res.mr->addr;
     server_MRinfo->length = ib_res.mr->length;
     server_MRinfo->rkey = ib_res.mr->rkey;
-    log("Local server mr info addr:%p, length:%ld, rkey: %d", \
-        server_MRinfo->addr, server_MRinfo->length, server_MRinfo->rkey);
+    log("Local server mr info addr:%p, length:%ld, rkey: %d", server_MRinfo->addr, server_MRinfo->length, server_MRinfo->rkey);
 
     /* query IB device attr */
     ret = ibv_query_device(ib_res.ctx, &ib_res.dev_attr);
@@ -362,17 +358,16 @@ int setup_ib()
 
     /* create cq */
     log("ib_res.dev_attr.max_cqe is %d", ib_res.dev_attr.max_cqe);
-    ib_res.cq = ibv_create_cq(ib_res.ctx, 2048,
-                              NULL, NULL, 0);
+    ib_res.cq = ibv_create_cq(ib_res.ctx, 128, NULL, NULL, 0);
     check(ib_res.cq != NULL, "Failed to create cq");
 
     /* create srq */
-    struct ibv_srq_init_attr srq_init_attr = {
-        .attr.max_wr = ib_res.dev_attr.max_srq_wr,
-        .attr.max_sge = 1,
-    };
+    // struct ibv_srq_init_attr srq_init_attr = {
+    //     .attr.max_wr = (128 + 64),
+    //     .attr.max_sge = 5,
+    // };
 
-    ib_res.srq = ibv_create_srq(ib_res.pd, &srq_init_attr);
+    // ib_res.srq = ibv_create_srq(ib_res.pd, &srq_init_attr);
 
     /* create qp */
     struct ibv_qp_init_attr qp_init_attr;
@@ -380,17 +375,16 @@ int setup_ib()
     qp_init_attr.qp_type = IBV_QPT_RC;
     qp_init_attr.send_cq = ib_res.cq;
     qp_init_attr.recv_cq = ib_res.cq;
-    qp_init_attr.srq = ib_res.srq;
+    // qp_init_attr.srq = ib_res.srq;
     qp_init_attr.cap.max_send_wr = 128;
     qp_init_attr.cap.max_recv_wr = 64;
-    qp_init_attr.cap.max_send_sge = 4;
+    qp_init_attr.cap.max_send_sge = 1;
     qp_init_attr.cap.max_recv_sge = 1;
     qp_init_attr.cap.max_inline_data = 60;
     qp_init_attr.xrc_domain = NULL;
-    qp_init_attr.sq_sig_all = 0;
+    qp_init_attr.sq_sig_all = 1;
 
     ib_res.qp = (struct ibv_qp **)calloc(ib_res.num_qps, sizeof(struct ibv_qp *));
-    log("XXXXXXXXXXXXXXXXXXXX ibv_create_qp XXXXXXXXXXXXXXXXXXXX\n");
     check(ib_res.qp != NULL, "Failed to allocate qp");
     // log("num qpes %d", ib_res.num_qps);
     for (i = 0; i < ib_res.num_qps; i++)
@@ -411,6 +405,7 @@ int setup_ib()
     check(ret == 0, "Failed to connect qp");
 
     ibv_free_device_list(dev_list);
+    log("XXXXXXXXXXXXXXXXXXXX ibv init ok XXXXXXXXXXXXXXXXXXXX\n");
     return 0;
 
 error:

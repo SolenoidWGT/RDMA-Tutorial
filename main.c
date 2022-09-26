@@ -1,4 +1,4 @@
-#define _GNU_SOURCE         /* See feature_test_macros(7) */
+#define _GNU_SOURCE /* See feature_test_macros(7) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +19,7 @@ char *CLIENT_PORT = "12346";
 int init_env();
 void destroy_env();
 
-struct ibv_mr * (*ibv_internal_reg_mr_iova2)(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, int access);
+struct ibv_mr *(*ibv_internal_reg_mr_iova2)(struct ibv_pd *pd, void *addr, size_t length, uint64_t iova, int access);
 
 int main(int argc, char *argv[])
 {
@@ -35,8 +35,8 @@ int main(int argc, char *argv[])
     // check(ret == 0, "Failed to parse config file");
 
     config_info.is_server = (bool)atoi(argv[1]);
-    config_info.msg_size = 16;
-    config_info.num_concurr_msgs = 8;
+    config_info.msg_size = 1024;
+    config_info.num_concurr_msgs = 1;
     config_info.num_servers = 1;
     config_info.num_clients = 1;
 

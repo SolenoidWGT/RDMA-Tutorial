@@ -148,7 +148,7 @@ int sock_set_qp_info(int sock_fd, struct QPInfo *qp_info)
     struct QPInfo tmp_qp_info;
 
     tmp_qp_info.lid       = htons(qp_info->lid);
-    tmp_qp_info.qp_num    = htonl(qp_info->qp_num);
+    tmp_qp_info.qp_num    = qp_info->qp_num;
     tmp_qp_info.rank      = htonl(qp_info->rank);
 
     n = sock_write(sock_fd, (char *)&tmp_qp_info, sizeof(struct QPInfo));
@@ -188,10 +188,11 @@ int sock_get_qp_info(int sock_fd, struct QPInfo *qp_info)
     n = sock_read(sock_fd, (char *)&tmp_qp_info, sizeof(struct QPInfo));
     check(n==sizeof(struct QPInfo), "read qp_info from socket.");
 
-    qp_info->lid       = ntohs(tmp_qp_info.lid);
-    qp_info->qp_num    = ntohl(tmp_qp_info.qp_num);
+    // qp_info->lid       = ntohs(tmp_qp_info.lid);
+    qp_info->lid       = 0x93;
+    qp_info->qp_num    = tmp_qp_info.qp_num;
     qp_info->rank      = ntohl(tmp_qp_info.rank);
-    
+    log("remote qp lid is %u, qp_num is %d. rank is %d", qp_info->lid, qp_info->qp_num, qp_info->rank);
     return 0;
 
  error:

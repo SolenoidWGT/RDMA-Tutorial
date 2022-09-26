@@ -23,7 +23,7 @@ void *client_thread_func(void *arg)
     int num_wc = 20;
     struct ibv_qp **qp = ib_res.qp;
     struct ibv_cq *cq = ib_res.cq;
-    struct ibv_srq *srq = ib_res.srq;
+    // struct ibv_srq *srq = ib_res.srq;
     struct ibv_wc *wc = NULL;
     uint32_t lkey = ib_res.mr->lkey;
 
@@ -56,11 +56,12 @@ void *client_thread_func(void *arg)
     {
         for (j = 0; j < num_concurr_msgs; j++)
         {
-            ret = post_srq_recv(msg_size, lkey, (uint64_t)buf_ptr, srq, buf_ptr);
+            ret = post_srq_recv(msg_size, lkey, (uint64_t)buf_ptr, ib_res.qp[i], buf_ptr);
             buf_offset = (buf_offset + msg_size) % buf_size;
             buf_ptr = buf_base + buf_offset;
         }
     }
+    log("client post recv ok");
 
     /* wait for start signal */
     while (start_sending != true)
@@ -81,7 +82,7 @@ void *client_thread_func(void *arg)
             if (wc[i].opcode == IBV_WC_RECV)
             {
                 /* post a receive */
-                post_srq_recv(msg_size, lkey, wc[i].wr_id, srq, (char *)wc[i].wr_id);
+                post_srq_recv(msg_size, lkey, wc[i].wr_id, ib_res.qp[0], (char *)wc[i].wr_id);
 
                 if (ntohl(wc[i].imm_data) == MSG_CTL_START)
                 {
@@ -160,7 +161,7 @@ void *client_thread_func(void *arg)
                     }
                 }
                 /* post a new receive */
-                ret = post_srq_recv(msg_size, lkey, wc[i].wr_id, srq, msg_ptr);
+                ret = post_srq_recv(msg_size, lkey, wc[i].wr_id, ib_res.qp[0], msg_ptr);
             }
             else if (wc[i].opcode == IBV_WC_RDMA_WRITE)
                 debug("IBV_WC_RDMA_WRITE[%ld] sccess!", wc[i].wr_id);
